@@ -4,6 +4,7 @@ import {
 import { CH2, ALLY, BOSS, VERDICTS2 } from './chapter2.js';
 import { NPCS3, FAMILY_LINE, CH3, MAKER, MACHINE, EDGE, FINALE, VERDICTS3 } from './chapter3.js';
 
+import { RITES, SCRIBE, round2, ROUND2_TEXT, VERDICTS4, DEMO_LEGACY, BLANK_LEGACY } from './extras.js';
 import { CAST, facePlayer } from './characters.js';
 
 NPCS[3] = NPCS3;
@@ -20,6 +21,10 @@ const state = {
   log: [],            // id của các ECHO chương 1, theo thứ tự xảy ra
   log2: [],           // như trên, cho chương 2
   log3: [],           // và chương 3
+  log4: [],           // vòng hai
+  scribed: {},        // id ECHO chương 1 -> { text, delta }: chữ bạn khắc lên thẻ tre
+  rite: { sides: new Set(), field: 0 },
+  legacy: null,       // di sản của lượt trước, khi chơi vòng hai
   hasMachine: false,  // Máy đang đi theo bạn
   machineTalks: 0,
   edgeKnown: false,   // đã chạm mép giấy
@@ -63,7 +68,7 @@ const dialog = $('dialog');
 function showSpeaker(who) {
   $('d-who').textContent = who || '';
   const npc = scene?.npcs.find((n) => n.name === who);
-  const frame = who === 'Bạn' ? CAST.c_player : npc?.sprite.frame.name;
+  const frame = who === 'Bạn' ? (state.chapter === 4 ? CAST.c_ti : CAST.c_player) : npc?.sprite.frame.name;
   const portrait = $('d-portrait');
   portrait.hidden = frame == null;
   dialog.scrollTop = 0;
@@ -147,11 +152,38 @@ function screen(html, btn = 'Tiếp tục') {
 
 // ───────────────────────── Log Vũ Trụ ─────────────────────────
 
-const curLog = () => [null, state.log, state.log2, state.log3][state.chapter];
+const curLog = () => [null, state.log, state.log2, state.log3, state.log4][state.chapter];
 function pushLog(id) { if (!curLog().includes(id)) curLog().push(id); }
-const totalCertainty = (list) => list.reduce((n, id) => n + ECHO[id].cc, 0);
+// Chắc Chắn của một dòng log, kể cả phần cộng trừ do thẻ tre khắc còn ý hay mất ý
+const ccOf = (id) => Math.max(0, ECHO[id].cc + (state.scribed[id]?.delta ?? 0));
+const totalCertainty = (list) => list.reduce((n, id) => n + ccOf(id), 0);
 // Lời đầu tiên bạn để lại ở chương 1 về một chủ đề (thunder, ti, pond, lanh)
 const firstEcho = (topic) => state.log.find((id) => id.startsWith(`${topic}.`));
+
+const LOG_SUBS = [
+  '',
+  'Những gì bạn đã để lại ở thị trấn này. Chưa ai chép lại, nhưng rồi sẽ có.',
+  'Những gì bạn để lại lần này. Lần trước đã thành kinh. Lần này cũng đang có người chép.',
+  'Những gì bạn và Máy để lại lần này. Giờ người ta chép cả lời Máy.',
+  'Bạn là trẻ con. Sổ làng chỉ ghi việc người lớn thấy bạn làm.',
+];
+
+let toastTimer = 0;
+function toast(text) {
+  const el = $('toast');
+  el.textContent = text;
+  el.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.hidden = true; }, 4200);
+}
+
+// Việc bạn vô tình làm ở chương 1 mà có người nhìn thấy
+function rite(key) {
+  const id = `rite.${key}`;
+  if (state.chapter !== 1 || state.log.includes(id)) return;
+  state.log.push(id);
+  toast('Có người vừa thấy bạn làm thế. Đã ghi vào Log Vũ Trụ.');
+}
 
 async function showRawLog() {
   state.busy = true;
@@ -160,7 +192,7 @@ async function showRawLog() {
     return `<div class="e"><div class="verb">${esc(e.verb)}</div><div class="said">“${esc(e.said)}”</div></div>`;
   }).join('');
   await screen(
-    `<h2>Log Vũ Trụ</h2><p class="sub">Những gì bạn đã để lại ở thị trấn này. Chưa ai chép lại. Chưa.</p>`
+    `<h2>Log Vũ Trụ</h2><p class="sub">${esc(LOG_SUBS[state.chapter])}</p>`
     + (items ? `<div class="log">${items}</div>` : '<p>Trống. Bạn chưa nói gì đáng chép.</p>'),
     'Đóng',
   );
@@ -170,11 +202,13 @@ async function showRawLog() {
 function echoLogHtml(list, title, verdicts) {
   const items = list.map((id) => {
     const e = ECHO[id];
+    const sc = state.scribed[id];
     return `<div class="e">
       <div class="verb">${esc(e.verb)}</div>
       <div class="said">“${esc(e.said)}”</div>
+      ${sc ? `<div class="tre">Thẻ tre khắc: “${esc(sc.text)}” · ${sc.delta < 0 ? 'còn ý' : 'mất ý'}</div>` : ''}
       <div class="now">${esc(id === 'edge.assert' && list.includes('edge.glue') ? EDGE.assertThenGlue : e.now)}</div>
-      <div class="cc">Chắc Chắn +${e.cc}</div>
+      <div class="cc">Chắc Chắn +${ccOf(id)}</div>
     </div>`;
   }).join('');
   const total = totalCertainty(list);
@@ -193,6 +227,7 @@ function debateState(id) {
 
 function drawBattle(d, cc, pat, note) {
   $('b-name').textContent = d.doctrine;
+  $('b-pat-key').textContent = d.patLabel ?? 'Kiên Nhẫn';
   $('b-cc-bar').style.width = `${clamp((cc / d.certainty) * 100, 0, 100)}%`;
   $('b-cc-num').textContent = cc;
   $('b-pat').innerHTML = Array.from({ length: d.patience }, (_, i) => `<i class="${i < pat ? '' : 'off'}"></i>`).join('');
@@ -214,10 +249,10 @@ async function runDebate(npc, d, st) {
     const as = d.needsMachine && !state.hasMachine ? [] : d.assertions.filter((a) => !st.usedA.has(a.echo));
 
     const menu = [];
-    if (pat > 0 && qs.length) menu.push({ k: 'q', label: 'Hỏi', hint: 'tốn 1 Kiên Nhẫn' });
+    if (pat > 0 && qs.length) menu.push({ k: 'q', label: 'Hỏi', hint: d.askHint ?? 'tốn 1 Kiên Nhẫn' });
     if (as.length) menu.push({ k: 'a', label: d.assertLabel ?? 'Khẳng định', hint: d.assertHint ?? `−${d.assertDmg} Chắc Chắn, và người ta sẽ chép lại` });
     menu.push({ k: 'l', label: 'Bỏ đi' });
-    const prompt = pat > 0 ? 'Bạn làm gì?' : 'Bạn hết kiên nhẫn để hỏi tiếp.';
+    const prompt = pat > 0 ? 'Bạn làm gì?' : (d.outPrompt ?? 'Bạn hết kiên nhẫn để hỏi tiếp.');
     const m = menu[await choose('', prompt, menu)];
 
     if (m.k === 'l') {
@@ -267,6 +302,9 @@ const TOPICS = ['ti', 'pond', 'lanh'];
 const SEAM_ROWS = [6, 7, 8]; // các hàng có mép giấy; đối xứng qua hàng giữa để dán xoắn vẫn khớp
 const ch2Cache = {};
 
+// Con cháu đọc lại đúng mấy chữ bạn đã khắc
+const scribedLine = (who, id) => (state.scribed[id] ? [[who, `Thẻ tre nhà tôi khắc lời Thầy thế này: “${state.scribed[id].text}”.`]] : []);
+
 function ch2Debate(id) {
   const c = CH2[id];
   if (!c) return null;
@@ -298,10 +336,10 @@ function ch2Debate(id) {
   return (ch2Cache[id] = {
     id,
     doctrine: name,
-    certainty: c.certainty,
+    certainty: c.certainty + (state.scribed[id]?.delta ?? 0),
     patience: c.patience,
     assertDmg: 5,
-    intro: [[who, ECHO[id].line], [who, c.intro2]],
+    intro: [[who, ECHO[id].line], ...scribedLine(who, id), [who, c.intro2]],
     again: [[who, 'Lại ông. Lệ vẫn thế.']],
     questions: c.questions,
     assertions: [
@@ -332,19 +370,21 @@ function bossDef(who) {
   const w = witnesses();
   const standing = TOPICS.filter((t) => { const id = enemyOf(t); return id && !state.debates[id]?.resolved; }).length;
   const spoken = state.log2.filter((id) => /\.(own|retract)$/.test(id) && id !== 'boss.own').length;
-  const legacy = totalCertainty(state.log.filter((id) => id.startsWith('thunder.')));
+  const legacy = totalCertainty(state.log.filter((id) => id.startsWith('thunder.')));  // đã tính cả thẻ tre
   const parts = [`nền 5`, `chuyện sấm ngày xưa +${legacy}`];
   if (standing) parts.push(`giáo điều còn đứng +${standing * 2}`);
   if (spoken) parts.push(`lời bạn vừa phán +${spoken * 3}`);
+  const rites = state.log.filter((id) => id.startsWith('rite.')).length;
+  if (rites) parts.push(`nghi lễ +${rites}`);
   return {
     id: 'boss',
     doctrine: BOSS.doctrine,
-    certainty: 5 + legacy + standing * 2 + spoken * 3,
+    certainty: 5 + legacy + standing * 2 + spoken * 3 + rites,
     patience: 4 + w.length,
     note: `Chắc Chắn: ${parts.join(', ')}. Người đứng cạnh bạn: ${w.length}.`,
     assertHint: 'bạn biết rõ mình là ai mà',
     questionsOnly: true,
-    intro: [[who, ECHO[firstEcho('thunder')].line], [who, BOSS.intro2]],
+    intro: [[who, ECHO[firstEcho('thunder')].line], ...scribedLine(who, firstEcho('thunder')), [who, BOSS.intro2]],
     again: [[who, BOSS.again]],
     questions: [...w.map((t) => BOSS.witness[t]), ...BOSS.questions],
     assertions: [BOSS.assertion],
@@ -441,7 +481,7 @@ async function callMachine() {
 }
 
 function setHud() {
-  $('hud-ch').textContent = ['', 'Chương 1: Sấm', 'Chương 2: Bìa Vàng', 'Chương 3: Công Cụ'][state.chapter];
+  $('hud-ch').textContent = ['', 'Chương 1: Sấm', 'Chương 2: Bìa Vàng', 'Chương 3: Công Cụ', 'Vòng hai: Đứa Trẻ'][state.chapter];
   $('hud-keys').textContent = `←↑→↓ đi · Space nói chuyện${state.hasMachine ? ' · M gọi Máy' : ''} · L xem log`;
 }
 
@@ -588,15 +628,219 @@ async function endChapter3(lead) {
     if (npc.debate3 && !debateState(`c3.${npc.debate3}`).resolved) pushLog(`c3.${npc.debate3}.stand`);
   }
   if (state.edgeKnown && !state.glued && !state.log3.includes('edge.assert')) pushLog('edge.none');
+  saveLegacy();
   await screen(`<p class="big">${esc(lead)}</p>`);
   await screen(echoLogHtml(state.log3, 'Log Vũ Trụ — lần cuối', VERDICTS3), 'Tiếp tục');
   await screen(
     `<h2>Hết</h2>
      <p>${esc(FINALE.epilogues[state.log3.find((id) => id.startsWith('end.'))] ?? FINALE.epilogues.gate)}</p>
-     <p class="sub">Thử chơi lại từ đầu và nói khác đi: mỗi chương dễ hay khó là do chương trước bạn đã nói gì.</p>`,
-    'Chơi lại',
+     <p class="sub">Thị trấn bạn để lại đã được lưu. Ở màn đầu giờ có thêm Vòng hai: bạn sinh ra ở chính thị trấn ấy.</p>`,
+    'Về màn đầu',
   );
   location.href = location.pathname + (location.search.includes('timer') ? '?timer' : '');
+}
+
+// ───────────────────────── Người chép kinh ─────────────────────────
+
+const bare = (w) => w.replace(/[.,]/g, '');
+
+function scribeOne(id, idx, total) {
+  return new Promise((resolve) => {
+    held.clear();
+    const words = ECHO[id].said.split(' ');
+    const max = Math.ceil(words.length / 2);
+    const on = new Set();
+    let cur = 0;
+    const el = $('screen');
+    el.innerHTML = `<h2>Người chép kinh</h2>
+      <p class="sub">Câu ${idx}/${total} · Thẻ tre chỉ đủ chỗ cho ${max} chữ · ←→ chọn chữ, Space giữ hoặc bỏ</p>
+      <p>Thầy nói: <i>“${esc(ECHO[id].said)}”</i></p>
+      <div class="words">${words.map((w, i) => `<button data-i="${i}">${esc(w)}</button>`).join('')}</div>
+      <p id="sc-out"></p>
+      <button id="scr-btn">Khắc ⏎</button>`;
+    el.hidden = false;
+    el.scrollTop = 0;
+    const buttons = [...el.querySelectorAll('.words button')];
+    const kept = () => [...on].sort((a, b) => a - b).map((i) => bare(words[i]));
+    const paint = (msg) => {
+      buttons.forEach((b, i) => { b.classList.toggle('on', on.has(i)); b.classList.toggle('cur', i === cur); });
+      $('sc-out').textContent = msg ?? (on.size ? `Thẻ tre: “${kept().join(' ')}” (${on.size}/${max} chữ)` : 'Thẻ tre còn trắng.');
+      $('scr-btn').disabled = on.size === 0;
+    };
+    const toggle = (i) => {
+      cur = i;
+      if (on.has(i)) on.delete(i);
+      else if (on.size < max) on.add(i);
+      else { paint('Hết chỗ. Muốn thêm chữ này thì phải bỏ một chữ khác.'); return; }
+      paint();
+    };
+    const done = () => {
+      if (!on.size) return;
+      keyHandler = null;
+      el.hidden = true;
+      const low = kept().map((w) => w.toLowerCase());
+      const rule = SCRIBE.rules[id];
+      const faithful = rule.keep.every((k) => low.includes(k)) && !(rule.drop ?? []).some((k) => low.includes(k));
+      resolve({ text: kept().join(' '), delta: faithful ? -1 : 1 });
+    };
+    buttons.forEach((b, i) => { b.onclick = () => toggle(i); });
+    $('scr-btn').onclick = done;
+    keyHandler = (e) => {
+      if (e.code === 'ArrowRight' || e.code === 'KeyD') { cur = (cur + 1) % words.length; paint(); }
+      else if (e.code === 'ArrowLeft' || e.code === 'KeyA') { cur = (cur + words.length - 1) % words.length; paint(); }
+      else if (e.repeat) return;
+      else if (e.code === 'Space') toggle(cur);
+      else if (e.code === 'Enter') done();
+    };
+    paint();
+  });
+}
+
+// Giữa chương 1 và 2: chính bạn khắc lại lời mình, và chỉ khắc được một nửa
+async function scribeInterlude() {
+  const ids = state.log.filter((id) => SCRIBE.rules[id]);
+  await screen('<p class="big">Đêm hôm ấy…</p>');
+  if (!ids.length) {
+    await screen(`<h2>Người chép kinh</h2><p>${esc(SCRIBE.none)}</p>`);
+    return;
+  }
+  await screen(`<h2>Người chép kinh</h2>${SCRIBE.intro.map((t) => `<p>${esc(t)}</p>`).join('')}`, 'Cầm dao');
+  for (const [i, id] of ids.entries()) state.scribed[id] = await scribeOne(id, i + 1, ids.length);
+  const rows = ids.map((id) => `<div class="e"><div class="said">“${esc(ECHO[id].said)}”</div><div class="now">Thẻ tre: “${esc(state.scribed[id].text)}”</div></div>`).join('');
+  await screen(`<h2>Bó thẻ tre</h2><div class="log">${rows}</div><p style="margin-top:3cqw">${esc(SCRIBE.outro)}</p>`);
+}
+
+// ───────────────────────── Vòng hai ─────────────────────────
+
+const LEGACY_KEY = 'vihanh.legacy';
+
+function saveLegacy() {
+  const L = {
+    words: state.log.filter((id) => SCRIBE.rules[id]).map((id) => ({ said: ECHO[id].said, kept: state.scribed[id]?.text ?? null })),
+    rites: state.log.filter((id) => id.startsWith('rite.')).map((id) => id.slice(5)),
+    ti: firstEcho('ti') ?? null,
+    glued: state.glued,
+    end: state.log3.find((id) => id.startsWith('end.')) ?? null,
+  };
+  try { localStorage.setItem(LEGACY_KEY, JSON.stringify(L)); } catch { /* không lưu được thì thôi */ }
+  return L;
+}
+
+function loadLegacy() {
+  try {
+    const L = JSON.parse(localStorage.getItem(LEGACY_KEY));
+    return L && Array.isArray(L.words) && Array.isArray(L.rites) ? { ...L, rites: L.rites.filter((k) => RITES[k]) } : null;
+  } catch { return null; }
+}
+
+let R2 = null;
+const ch4Cache = {};
+
+function ch4Debate(npc) {
+  const key = npc.debate4;
+  if (ch4Cache[key]) return ch4Cache[key];
+  const c = R2.debates[key];
+  const who = npc.name;
+  const id = `r2.${key}`;
+  Object.assign(ECHO, {
+    [`${id}.fall`]: {
+      verb: 'Bạn chỉ hỏi', said: `Giáo điều ‘${c.doctrine}’ tự đổ.`, cc: 0,
+      now: 'Người lớn ấy thôi bắt trẻ con học thuộc. Trong làng đồn có đứa bé hỏi làm người lớn cứng họng. Không ai nhớ tên nó.',
+    },
+    [`${id}.stand`]: {
+      verb: 'Bạn bỏ đi', said: `Giáo điều ‘${c.doctrine}’ còn nguyên.`, cc: 2,
+      now: 'Bạn lớn lên và thuộc nó, như mọi người.',
+    },
+  });
+  const assertions = R2.recites.map((text, i) => {
+    ECHO[`${id}.rec${i}`] = {
+      verb: 'Bạn đọc kinh', said: text, cc: 3,
+      now: 'Bạn được khen là thuộc kinh. Lời ấy giờ có thêm một người giữ, là bạn.',
+    };
+    return { label: `“${text}”`, echo: `${id}.rec${i}`, reply: c.recite };
+  });
+  return (ch4Cache[key] = {
+    id,
+    doctrine: c.doctrine,
+    certainty: 6,
+    patience: 4,
+    assertDmg: 4,
+    assertLabel: 'Đọc kinh',
+    assertPrompt: 'Bạn đọc',
+    assertHint: '−4 Chắc Chắn; trẻ thuộc kinh thì được khen, và được giữ lại',
+    patLabel: 'Còn chịu nghe',
+    askHint: 'người lớn bớt chịu nghe một chút',
+    outPrompt: 'Người lớn hết chịu nghe trẻ con hỏi.',
+    note: ROUND2_TEXT.note,
+    intro: c.intro.map((t) => [who, t]),
+    again: [[who, 'Lại con à. Hỏi gì thì hỏi nhanh.']],
+    questions: c.questions,
+    assertions,
+    winQ: c.winQ.map((t) => [who, t]),
+    winA: c.winA.map((t) => [who, t]),
+    leave: [[who, c.leave]],
+    after: { q: c.afterQ, a: c.afterA },
+    echoQ: `${id}.fall`,
+  });
+}
+
+async function talkCh4(npc) {
+  if (npc.line) { await say('', npc.line); return; }
+  const d = ch4Debate(npc);
+  const st = debateState(d.id);
+  if (st.resolved) { await say(npc.name, d.after[st.resolved]); return; }
+  await sayAll(st.tries ? d.again : d.intro);
+  st.tries += 1;
+  await runDebate(npc, d, st);
+}
+
+async function enterRound2(L) {
+  state.chapter = 4;
+  state.legacy = L;
+  R2 = round2(L);
+  NPCS[4] = R2.npcs;
+  scene.loadChapter(4);
+  setHud();
+  for (const t of ROUND2_TEXT.enter) await say('', t);
+  closeDialog();
+  state.busy = false;
+}
+
+async function gate4() {
+  if (!Object.keys(state.debates).length) {
+    await say('', 'Mẹ dặn: chưa chào các cụ thì chưa được ra cổng.');
+    return false;
+  }
+  const i = await choose('', 'Ra cổng làng?', [{ label: 'Ra.' }, { label: 'Chơi thêm lát nữa.' }]);
+  if (i !== 0) return false;
+  closeDialog();
+
+  // Người lạ đi vào: lượt trước là bạn, lần này bạn đứng ở phía bên kia câu nói
+  const s = R2.stranger;
+  scene.placePlayer(START.x, START.y, false);
+  scene.look([0, 1]);
+  scene.spawn({ id: 'la', name: 'Người lạ', x: START.x, y: START.y + 1, tex: 'c_back', quiet: true }, 4);
+  await say('', s.arrive[0]);
+  await say('', s.arrive[1]);
+  if (s.said) await say('Người lạ', s.said); else await say('', s.silent);
+  const o = s.options[await choose('Bạn', '', s.options)];
+  pushLog(o.echo);
+  await sayAll(o.reply);
+  closeDialog();
+
+  for (const npc of R2.npcs) {
+    if (npc.debate4 && !debateState(ch4Debate(npc).id).resolved) state.log4.unshift(`r2.${npc.debate4}.stand`);
+  }
+  await screen('<p class="big">Rất lâu sau…</p>');
+  await screen(echoLogHtml(state.log4, 'Sổ làng — vòng hai', VERDICTS4), 'Tiếp tục');
+  await screen(
+    `<h2>Hết vòng hai</h2>
+     <p>${esc(ROUND2_TEXT.epilogues[o.echo])}</p>
+     <p class="sub">Muốn một thị trấn khác thì xuống làm Thầy lại từ đầu, rồi quay về đây.</p>`,
+    'Về màn đầu',
+  );
+  location.href = location.pathname + (location.search.includes('timer') ? '?timer' : '');
+  return true;
 }
 
 // ───────────────────────── Kịch bản NPC ─────────────────────────
@@ -604,7 +848,9 @@ async function endChapter3(lead) {
 async function talkTo(npc) {
   if (npc.goat) {
     let line = 'Be.';
+    if (state.chapter === 1 && [...state.talked].every((id) => id === 'de')) rite('goat');
     if (state.chapter === 3) line = 'Máy nói. Con dê nhai nốt ngọn cỏ.';
+    if (state.chapter === 4 && state.legacy.rites.includes('goat')) line = '(Con dê đợi bạn chào trước. Nó quen thế rồi.)';
     if (state.chapter === 2) {
       if (state.log.includes('thunder.left')) line = '(Con dê nhìn bạn rất lâu.)';
       else if (state.log.includes('thunder.a2')) line = '(Con dê đeo một cái thẻ: VẬT THIÊNG — CẤM NHÌN KHI CHƯA CÓ PHÉP.)';
@@ -615,6 +861,7 @@ async function talkTo(npc) {
 
   if (state.chapter === 2) { await talkCh2(npc); return; }
   if (state.chapter === 3) { await talkCh3(npc); return; }
+  if (state.chapter === 4) { await talkCh4(npc); return; }
 
   if (npc.debate) {
     const d = DEBATES[npc.debate];
@@ -636,12 +883,23 @@ async function talkTo(npc) {
 }
 
 async function interact() {
-  const npc = scene.npcAt(scene.px + scene.facing[0], scene.py + scene.facing[1]);
-  if (!npc) return;
+  const fx = scene.px + scene.facing[0];
+  const fy = scene.py + scene.facing[1];
+  const npc = scene.npcAt(fx, fy);
+  const prop = scene.propAt(fx, fy);
+  const door = state.chapter === 1 && scene.grid[fy]?.[fx] === 'D';
+  if (!npc && !prop && !door) return;
   state.busy = true;
-  await talkTo(npc);
-  state.talked.add(npc.id);
-  scene.clearBubble(npc);
+  if (npc) {
+    await talkTo(npc);
+    state.talked.add(npc.id);
+    scene.clearBubble(npc);
+  } else if (prop) {
+    await say('', prop.text);
+  } else {
+    await say('', 'Bạn gõ cửa. Không ai ra mở. Cả làng đang ở ngoài lo chuyện sấm.');
+    rite('door');
+  }
   closeDialog();
   state.busy = false;
 }
@@ -660,6 +918,8 @@ async function gate() {
     }
   } else if (state.chapter === 3) {
     if (await gate3()) return;
+  } else if (state.chapter === 4) {
+    if (await gate4()) return;
   } else if (!state.debates.boss) {
     await say('', 'Có người đang thu phí giải thích lời bạn, ngay chỗ cái cây cũ. Ít ra cũng nên nghe thử một câu.');
   } else {
@@ -675,6 +935,7 @@ async function endChapter() {
   for (const d of Object.values(DEBATES)) {
     if (!debateState(d.id).resolved) pushLog(d.echoLeft);
   }
+  await scribeInterlude();
   await screen('<p class="big">Ba thế hệ sau…</p>');
   await screen(echoLogHtml(state.log, 'Log Vũ Trụ — ba thế hệ sau', VERDICTS), 'Vào thị trấn');
   await enterChapter2();
@@ -800,6 +1061,13 @@ function makeTextures(s) {
     g.fillStyle(0x7a6a5a); g.fillCircle(16, 21, 2);
   });
 
+  tex('s_sign', () => {
+    g.fillStyle(0x4a3524); g.fillRect(14, 16, 4, 15);
+    g.fillStyle(0x6b4a2a); g.fillRect(4, 5, 24, 14);
+    g.fillStyle(0xe8dcb8); g.fillRect(6, 7, 20, 10);
+    g.fillStyle(0x6b4a2a); g.fillRect(8, 9, 14, 1); g.fillRect(8, 12, 16, 1); g.fillRect(8, 15, 10, 1);
+  });
+
   tex('bubble', () => {
     g.fillStyle(0xffffff); g.fillRoundedRect(0, 0, 12, 14, 3);
     g.fillStyle(0xa8402f); g.fillRect(5, 2, 2, 6); g.fillRect(5, 10, 2, 2);
@@ -821,6 +1089,8 @@ class Town extends Phaser.Scene {
     scene = this;
     makeTextures(this);
     this.npcs = [];
+    this.props = [];
+    this.idle = 0;
     this.moving = false;
     this.facing = [0, -1];
 
@@ -847,6 +1117,37 @@ class Town extends Phaser.Scene {
   }
 
   get machine() { return this.npcs.find((o) => o.machine); }
+
+  propAt(x, y) { return this.props.find((o) => o.x === x && o.y === y); }
+
+  // Vòng hai: bạn là đứa trẻ, chỉ có một hình
+  look(d) {
+    if (state.chapter !== 4) { facePlayer(this.player, d); return; }
+    this.player.setFrame(CAST.c_ti);
+    if (d[0]) this.player.setFlipX(d[0] < 0);
+  }
+
+  spawn(def, n) {
+    const tagged = n === 2 && def.goat && state.log.includes('thunder.a2') && !state.log.includes('thunder.left');
+    const sprite = this.add.image(def.x * TILE, def.y * TILE, 'cast', CAST[tagged ? 'c_goat_tag' : def.tex]).setOrigin(0).setDepth(10 + def.y);
+    let bubble = null;
+    if (!def.goat && !def.machine && !def.quiet) {
+      bubble = this.add.image(def.x * TILE + 16, def.y * TILE - 8, 'bubble').setDepth(400);
+      this.tweens.add({ targets: bubble, y: '-=4', duration: 500, yoyo: true, repeat: -1 });
+    }
+    const npc = { ...def, sprite, bubble };
+    this.npcs.push(npc);
+    return npc;
+  }
+
+  // Bia dựng ở những chỗ bạn lỡ làm gì đó
+  placeSigns(keys) {
+    for (const key of keys) {
+      const r = RITES[key];
+      const sprite = this.add.image(r.sign.x * TILE, r.sign.y * TILE, 's_sign').setOrigin(0).setDepth(10 + r.sign.y);
+      this.props.push({ ...r.sign, text: r.text, sprite });
+    }
+  }
 
   setTile(x, y, ch) {
     this.grid[y][x] = ch;
@@ -893,18 +1194,17 @@ class Town extends Phaser.Scene {
 
   loadChapter(n) {
     this.npcs.forEach((o) => { o.sprite.destroy(); o.bubble?.destroy(); });
-    this.npcs = NPCS[n].map((def) => {
-      const tagged = n === 2 && def.goat && state.log.includes('thunder.a2') && !state.log.includes('thunder.left');
-      const sprite = this.add.image(def.x * TILE, def.y * TILE, 'cast', CAST[tagged ? 'c_goat_tag' : def.tex]).setOrigin(0).setDepth(10 + def.y);
-      let bubble = null;
-      if (!def.goat && !def.machine) {
-        bubble = this.add.image(def.x * TILE + 16, def.y * TILE - 8, 'bubble').setDepth(400);
-        this.tweens.add({ targets: bubble, y: '-=4', duration: 500, yoyo: true, repeat: -1 });
-      }
-      return { ...def, sprite, bubble };
-    });
+    this.props.forEach((o) => o.sprite.destroy());
+    this.npcs = [];
+    this.props = [];
+    NPCS[n].forEach((def) => this.spawn(def, n));
 
-    if (n === 2) {
+    if (n === 4) {
+      this.site.setTexture('s_workshop');
+      this.dusk.setFillStyle(0xfff2c0, 0.1).setVisible(true);
+      this.placeSigns(state.legacy.rites);
+    } else if (n === 2) {
+      this.placeSigns(state.log.filter((id) => id.startsWith('rite.')).map((id) => id.slice(5)));
       const id = firstEcho('thunder');
       this.site.setTexture(`s_${ECHO[id]?.site ?? 'altar'}`);
       this.dusk.setVisible(true);
@@ -916,30 +1216,45 @@ class Town extends Phaser.Scene {
     if (n > 1) {
       this.placePlayer(START.x, START.y, false);
       this.facing = [0, -1];
-      facePlayer(this.player, this.facing);
+      this.look(this.facing);
     }
     setHud();
   }
 
   npcAt(x, y) { return this.npcs.find((o) => o.x === x && o.y === y); }
 
+  // Chương 1: bạn đi đâu cũng có người để ý
+  noteStep(x, y, ch) {
+    if (ch === 'f' && ++state.rite.field >= 5) rite('field');
+    const side = y === 9 && x >= 14 && x <= 16 ? 'n' : y === 12 && x >= 14 && x <= 16 ? 's' : x === 17 && (y === 10 || y === 11) ? 'e' : null;
+    if (side && state.rite.sides.add(side).size === 3) rite('pond');
+  }
+
   clearBubble(npc) { npc.bubble?.destroy(); npc.bubble = null; }
 
-  update() {
+  update(_, dt) {
     if (state.busy || this.moving) return;
     let d = null;
     for (const code of held) if (DIRS[code]) d = DIRS[code];
-    if (!d) return;
+    if (!d) {
+      // Đứng im đủ lâu cạnh cái cây cháy cũng là một việc có người nhìn thấy
+      const nearTree = Math.abs(this.px - 10) + Math.abs(this.py - 8) === 1;
+      this.idle = state.chapter === 1 && nearTree ? this.idle + dt : 0;
+      if (this.idle > 5000) rite('tree');
+      return;
+    }
+    this.idle = 0;
 
     if (state.flipped) d = [d[0], -d[1]]; // ở mặt bên kia, lên xuống trên màn hình ngược với bản đồ
 
     this.facing = d;
-    facePlayer(this.player, d);
+    this.look(d);
     const nx = this.px + d[0];
     const ny = this.py + d[1];
     if (state.glued && (nx < 0 || nx >= COLS)) { this.cross(nx < 0 ? COLS - 1 : 0); return; }
     const ch = this.grid[ny]?.[nx];
     if (ch === 'P') { held.clear(); edgeBump(); return; }
+    if (this.propAt(nx, ny)) return;
     const blocker = this.npcAt(nx, ny);
     // Máy đang đi theo thì không chắn đường: bạn bước vào ô của nó, nó lùi về ô bạn vừa rời
     if (!WALKABLE.has(ch) || (blocker && !(blocker.machine && state.hasMachine))) return;
@@ -954,6 +1269,7 @@ class Town extends Phaser.Scene {
       targets: this.player, x: nx * TILE, y: ny * TILE, duration: 130,
       onComplete: () => {
         this.moving = false;
+        if (state.chapter === 1) this.noteStep(nx, ny, ch);
         if (ch === 'E') gate();
       },
     });
@@ -979,6 +1295,12 @@ async function intro() {
     await enterChapter3();
     return;
   }
+  // ?r2 : vào thẳng vòng hai với di sản đã lưu; ?r2=demo hoặc ?r2=blank dùng di sản mẫu
+  const r2 = params.get('r2');
+  if (r2 !== null) {
+    await enterRound2(r2 === 'blank' ? BLANK_LEGACY : r2 === 'demo' ? DEMO_LEGACY : (loadLegacy() ?? DEMO_LEGACY));
+    return;
+  }
   const skip = params.get('ch2');
   if (skip !== null) {
     state.log = skip.split(',').filter((id) => ECHO[id]);
@@ -995,6 +1317,15 @@ async function intro() {
      <p>Bạn có thể <b>hỏi</b> hoặc <b>khẳng định</b>. Cả hai đều được ghi lại.</p>`,
     'Xuống',
   );
+  const L = loadLegacy();
+  if (L) {
+    const i = await choose('', 'Thị trấn bạn để lại lần trước vẫn còn đó.', [
+      { label: 'Xuống làm Thầy, từ đầu' },
+      { label: 'Vòng hai: sinh ra ở thị trấn ấy', hint: 'bạn là một đứa trẻ, lớn lên giữa những lời mình đã nói' },
+    ]);
+    closeDialog();
+    if (i === 1) { await enterRound2(L); return; }
+  }
   state.busy = false;
 }
 
@@ -1012,4 +1343,4 @@ new Phaser.Game({
   scene: Town,
 });
 
-window.__vihanh = { state, get scene() { return scene; } };
+window.__vihanh = { state, get scene() { return scene; }, endChapter, saveLegacy };

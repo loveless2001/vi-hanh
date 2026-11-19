@@ -164,3 +164,29 @@ body { display: grid; place-items: center; }
 .log .now { color: #f0d98a; margin-top: .3cqw; }
 .log .cc { font-family: system-ui, sans-serif; font-size: 1.6cqw; opacity: .7; }
 .total { margin-top: 3cqw; font-size: 3cqw; color: var(--gold); }
+
+/* Báo có người vừa thấy bạn làm gì đó */
+#toast {
+  position: absolute; top: 6cqw; left: 50%; transform: translateX(-50%);
+  background: var(--ink); color: #f0d98a;
+  border: .25cqw solid var(--gold);
+  padding: .7cqw 1.8cqw;
+  font-size: 1.9cqw; font-style: italic; white-space: nowrap;
+  pointer-events: none;
+  animation: toast-in .4s ease-out;
+}
+#toast[hidden] { display: none; }
+@keyframes toast-in { from { opacity: 0; transform: translate(-50%, -1cqw); } }
+
+/* Người chép kinh: chọn chữ để khắc lên thẻ tre */
+#screen .words { display: flex; flex-wrap: wrap; justify-content: center; gap: 1cqw; margin: 2cqw 0; }
+#screen .words button {
+  margin: 0; padding: .8cqw 1.6cqw; font-size: 3cqw;
+  background: transparent; color: var(--paper);
+  border: .25cqw solid #5a5040;
+}
+#screen .words button.on { background: #c9b07a; color: var(--ink); border-color: var(--gold); }
+#screen .words button.cur { outline: .3cqw solid #fff; outline-offset: .2cqw; }
+#screen button:disabled { opacity: .4; cursor: default; }
+#sc-out { min-height: 3.6cqw; color: #f0d98a; font-style: italic; }
+.log .tre { font-size: 1.9cqw; color: #c9b07a; }
