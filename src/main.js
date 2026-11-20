@@ -165,19 +165,26 @@ function screen(html, btn = 'Tiếp tục') {
     paint();
     buttons.forEach((b, i) => {
       b.onclick = () => done(i);
-      b.onmouseenter = () => { sel = i; paint(); };
+      b.onfocus = () => { sel = i; paint(); };
+      b.onmouseenter = () => {
+        if (buttons.includes(document.activeElement)) return;
+        sel = i;
+        paint();
+      };
     });
     keyHandler = (e) => {
       const logEl = el.querySelector('.log');
       if (list.length > 1 && (e.code === 'ArrowRight' || e.code === 'KeyD' || e.code === 'ArrowLeft' || e.code === 'KeyA' || e.code === 'ArrowDown' || e.code === 'KeyS' || e.code === 'ArrowUp' || e.code === 'KeyW')) {
         const step = (e.code === 'ArrowRight' || e.code === 'KeyD' || e.code === 'ArrowDown' || e.code === 'KeyS') ? 1 : list.length - 1;
         sel = (sel + step) % list.length;
-        paint();
+        if (buttons.includes(document.activeElement)) buttons[sel].focus();
+        else paint();
       } else if (logEl && (e.code === 'ArrowDown' || e.code === 'KeyS')) {
         logEl.scrollTop += 48;
       } else if (logEl && (e.code === 'ArrowUp' || e.code === 'KeyW')) {
         logEl.scrollTop -= 48;
       } else if (!e.repeat && (e.code === 'Enter' || e.code === 'Space')) {
+        e.preventDefault();
         done(sel);
       } else if (list.length > 1 && /^(Digit|Numpad)[1-9]$/.test(e.code)) {
         const i = Number(e.code.slice(-1)) - 1;
