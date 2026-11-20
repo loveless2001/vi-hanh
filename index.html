@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Vi Hành — bản thử</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="wrap">
+    <div id="game"></div>
+
+    <div id="hud">
+      <span id="hud-ch"></span>
+      <span id="hud-keys">←↑→↓ đi · Space nói chuyện · L xem log</span>
+    </div>
+
+    <div id="battle" hidden>
+      <div id="b-label">GIÁO ĐIỀU</div>
+      <div id="b-name"></div>
+      <div class="b-row">
+        <span class="b-key">Chắc Chắn</span>
+        <div id="b-cc"><div id="b-cc-bar"></div></div>
+        <span id="b-cc-num"></span>
+      </div>
+      <div class="b-row">
+        <span class="b-key" id="b-pat-key">Kiên Nhẫn</span>
+        <div id="b-pat"></div>
+      </div>
+      <div id="b-note"></div>
+    </div>
+
+    <div id="dialog" hidden>
+      <canvas id="d-portrait" width="32" height="32" aria-hidden="true" hidden></canvas>
+      <div id="d-who"></div>
+      <div id="d-text"></div>
+      <div id="d-choices"></div>
+      <div id="d-more">▼</div>
+    </div>
+
+    <div id="strip" hidden></div>
+    <div id="edge-l" class="edge" hidden></div>
+    <div id="edge-r" class="edge" hidden></div>
+    <div id="flash"></div>
+    <div id="toast" hidden></div>
+
+    <div id="screen" hidden></div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>
