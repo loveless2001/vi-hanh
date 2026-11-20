@@ -4,7 +4,7 @@ import {
 import { CH2, ALLY, BOSS, VERDICTS2 } from './chapter2.js';
 import { NPCS3, FAMILY_LINE, CH3, MAKER, MACHINE, EDGE, FINALE, VERDICTS3 } from './chapter3.js';
 
-import { RITES, SCRIBE, round2, ROUND2_TEXT, VERDICTS4, DEMO_LEGACY, BLANK_LEGACY } from './extras.js';
+import { RITES, SCRIBE, round2, ROUND2_TEXT, round2Verdict, DEMO_LEGACY, BLANK_LEGACY } from './extras.js';
 import { CAST, facePlayer } from './characters.js';
 
 NPCS[3] = NPCS3;
@@ -107,6 +107,7 @@ function choose(who, text, options) {
     $('d-more').hidden = true;
     const box = $('d-choices');
     box.innerHTML = '';
+    box.classList.toggle('compact', options.length >= 6);
     let sel = 0;
     const buttons = options.map((o, i) => {
       const b = document.createElement('button');
@@ -135,18 +136,54 @@ function choose(who, text, options) {
   });
 }
 
-function closeDialog() { dialog.hidden = true; }
+function closeDialog() {
+  dialog.hidden = true;
+  document.activeElement?.blur?.();
+}
 
 function screen(html, btn = 'Tiếp tục') {
   return new Promise((resolve) => {
     held.clear();
     const el = $('screen');
-    el.innerHTML = `${html}<button id="scr-btn">${esc(btn)} ⏎</button>`;
+    const list = Array.isArray(btn) ? btn : [btn];
+    const btnsHtml = list.length === 1
+      ? `<button id="scr-btn">${esc(list[0])} ⏎</button>`
+      : `<div class="scr-btns">${list.map((b, i) => `<button data-i="${i}" id="${i === 0 ? 'scr-btn' : `scr-btn-${i}`}">${esc(b)}${i === 0 ? ' ⏎' : ''}</button>`).join('')}</div>`;
+    el.innerHTML = `${html}${btnsHtml}`;
     el.hidden = false;
     el.scrollTop = 0;
-    const done = () => { keyHandler = null; el.hidden = true; resolve(); };
-    keyHandler = (e) => { if (!e.repeat && (e.code === 'Enter' || e.code === 'Space')) done(); };
-    $('scr-btn').onclick = done;
+    const buttons = [...el.querySelectorAll('.scr-btns button, #scr-btn')];
+    let sel = 0;
+    const paint = () => {
+      if (list.length <= 1) return;
+      buttons.forEach((b, i) => {
+        b.classList.toggle('sel', i === sel);
+        b.textContent = `${list[i]}${i === sel ? ' ⏎' : ''}`;
+      });
+    };
+    const done = (i = sel) => { keyHandler = null; el.hidden = true; document.activeElement?.blur?.(); resolve(i); };
+    paint();
+    buttons.forEach((b, i) => {
+      b.onclick = () => done(i);
+      b.onmouseenter = () => { sel = i; paint(); };
+    });
+    keyHandler = (e) => {
+      const logEl = el.querySelector('.log');
+      if (list.length > 1 && (e.code === 'ArrowRight' || e.code === 'KeyD' || e.code === 'ArrowLeft' || e.code === 'KeyA' || e.code === 'ArrowDown' || e.code === 'KeyS' || e.code === 'ArrowUp' || e.code === 'KeyW')) {
+        const step = (e.code === 'ArrowRight' || e.code === 'KeyD' || e.code === 'ArrowDown' || e.code === 'KeyS') ? 1 : list.length - 1;
+        sel = (sel + step) % list.length;
+        paint();
+      } else if (logEl && (e.code === 'ArrowDown' || e.code === 'KeyS')) {
+        logEl.scrollTop += 48;
+      } else if (logEl && (e.code === 'ArrowUp' || e.code === 'KeyW')) {
+        logEl.scrollTop -= 48;
+      } else if (!e.repeat && (e.code === 'Enter' || e.code === 'Space')) {
+        done(sel);
+      } else if (list.length > 1 && /^(Digit|Numpad)[1-9]$/.test(e.code)) {
+        const i = Number(e.code.slice(-1)) - 1;
+        if (i < list.length) done(i);
+      }
+    };
   });
 }
 
@@ -199,7 +236,12 @@ async function showRawLog() {
   state.busy = false;
 }
 
-function echoLogHtml(list, title, verdicts) {
+function certaintyVerdict(list, verdicts) {
+  const total = totalCertainty(list);
+  return verdicts.find((v) => total <= v.max).text;
+}
+
+function echoLogHtml(list, title, verdict) {
   const items = list.map((id) => {
     const e = ECHO[id];
     const sc = state.scribed[id];
@@ -212,7 +254,6 @@ function echoLogHtml(list, title, verdicts) {
     </div>`;
   }).join('');
   const total = totalCertainty(list);
-  const verdict = verdicts.find((v) => total <= v.max).text;
   return `<h2>${esc(title)}</h2>
     <div class="log">${items}</div>
     <div class="total">Tổng Chắc Chắn của thị trấn: ${total}</div>
@@ -311,6 +352,7 @@ function ch2Debate(id) {
   if (ch2Cache[id]) return ch2Cache[id];
 
   const who = NPCS[2].find((n) => n.topic === id.split('.')[0]).name;
+  const tablet = state.scribed[id]?.text ?? ECHO[id].said.replace(/[.,]/g, '');
   const name = c.doctrine;
   const ownLabel = c.ownLabel ?? 'Chính ta là người nói câu đó.';
   const retractLabel = c.retractLabel ?? 'Ta rút lại lời ấy.';
@@ -341,7 +383,7 @@ function ch2Debate(id) {
     assertDmg: 5,
     intro: [[who, ECHO[id].line], ...scribedLine(who, id), [who, c.intro2]],
     again: [[who, 'Lại ông. Lệ vẫn thế.']],
-    questions: c.questions,
+    questions: c.questions.map((q) => q.readTablet ? { ...q, reply: q.readTablet(tablet) } : q),
     assertions: [
       { label: ownLabel, echo: `${id}.own`, reply: c.own },
       { label: retractLabel, echo: `${id}.retract`, reply: c.retract },
@@ -630,7 +672,7 @@ async function endChapter3(lead) {
   if (state.edgeKnown && !state.glued && !state.log3.includes('edge.assert')) pushLog('edge.none');
   saveLegacy();
   await screen(`<p class="big">${esc(lead)}</p>`);
-  await screen(echoLogHtml(state.log3, 'Log Vũ Trụ — lần cuối', VERDICTS3), 'Tiếp tục');
+  await screen(echoLogHtml(state.log3, 'Log Vũ Trụ — lần cuối', certaintyVerdict(state.log3, VERDICTS3)), 'Tiếp tục');
   await screen(
     `<h2>Hết</h2>
      <p>${esc(FINALE.epilogues[state.log3.find((id) => id.startsWith('end.'))] ?? FINALE.epilogues.gate)}</p>
@@ -748,8 +790,8 @@ function ch4Debate(npc) {
       now: 'Người lớn ấy thôi bắt trẻ con học thuộc. Trong làng đồn có đứa bé hỏi làm người lớn cứng họng. Không ai nhớ tên nó.',
     },
     [`${id}.stand`]: {
-      verb: 'Bạn bỏ đi', said: `Giáo điều ‘${c.doctrine}’ còn nguyên.`, cc: 2,
-      now: 'Bạn lớn lên và thuộc nó, như mọi người.',
+      verb: 'Lệ còn nguyên', said: `Giáo điều ‘${c.doctrine}’ còn nguyên.`, cc: 2,
+      now: 'Sáng hôm sau người ta vẫn dạy điều ấy cho trẻ con trong làng.',
     },
   });
   const assertions = R2.recites.map((text, i) => {
@@ -786,12 +828,36 @@ function ch4Debate(npc) {
 
 async function talkCh4(npc) {
   if (npc.line) { await say('', npc.line); return; }
+  if (npc.debate4 === 'mep' && state.log4.includes('r2.mep.visit')) {
+    await say(npc.name, R2.edge.after);
+    return;
+  }
   const d = ch4Debate(npc);
   const st = debateState(d.id);
   if (st.resolved) { await say(npc.name, d.after[st.resolved]); return; }
   await sayAll(st.tries ? d.again : d.intro);
   st.tries += 1;
   await runDebate(npc, d, st);
+}
+
+async function visitRound2Edge(x) {
+  state.busy = true;
+  held.clear();
+  if (state.debates['r2.mep']?.resolved !== 'q') {
+    await say('', 'Một tấm bảng chắn lối. Bên dưới hàng chữ “Cấm tới gần” có tên Chú Giữ Mép.');
+  } else if (!state.log4.includes('r2.mep.visit')) {
+    const keeper = scene.npcs.find((n) => n.debate4 === 'mep');
+    keeper.x = x === 0 ? 2 : COLS - 3;
+    keeper.y = SEAM_ROWS[1];
+    keeper.sprite.setPosition(keeper.x * TILE, keeper.y * TILE).setDepth(10 + keeper.y);
+    await say('', 'Bạn gọi một tiếng. Chú Giữ Mép chạy tới, một bên dép vẫn chưa buộc xong.');
+    await say(keeper.name, R2.edge.first);
+    pushLog('r2.mep.visit');
+  } else {
+    await say('', 'Gió nâng góc giấy lên. Hai mép vẫn rời nhau.');
+  }
+  closeDialog();
+  state.busy = false;
 }
 
 async function enterRound2(L) {
@@ -832,7 +898,7 @@ async function gate4() {
     if (npc.debate4 && !debateState(ch4Debate(npc).id).resolved) state.log4.unshift(`r2.${npc.debate4}.stand`);
   }
   await screen('<p class="big">Rất lâu sau…</p>');
-  await screen(echoLogHtml(state.log4, 'Sổ làng — vòng hai', VERDICTS4), 'Tiếp tục');
+  await screen(echoLogHtml(state.log4, 'Sổ làng — vòng hai', round2Verdict(state.log4)), 'Tiếp tục');
   await screen(
     `<h2>Hết vòng hai</h2>
      <p>${esc(ROUND2_TEXT.epilogues[o.echo])}</p>
@@ -883,12 +949,28 @@ async function talkTo(npc) {
 }
 
 async function interact() {
-  const fx = scene.px + scene.facing[0];
-  const fy = scene.py + scene.facing[1];
-  const npc = scene.npcAt(fx, fy);
-  const prop = scene.propAt(fx, fy);
-  const door = state.chapter === 1 && scene.grid[fy]?.[fx] === 'D';
-  if (!npc && !prop && !door) return;
+  const probe = (dx, dy) => {
+    const x = scene.px + dx;
+    const y = scene.py + dy;
+    const npc = scene.npcAt(x, y);
+    const prop = scene.propAt(x, y);
+    const door = state.chapter === 1 && scene.grid[y]?.[x] === 'D';
+    if (!npc && !prop && !door) return null;
+    const rank = npc ? (npc.goat || (npc.machine && state.hasMachine) ? 2 : 1) : prop ? 3 : 4;
+    return { dir: [dx, dy], npc, prop, door, rank };
+  };
+  let hit = probe(scene.facing[0], scene.facing[1]);
+  if (!hit) {
+    const dirs = [[0, -1], [0, 1], [-1, 0], [1, 0]];
+    const candidates = dirs.map(([dx, dy]) => probe(dx, dy)).filter(Boolean).sort((a, b) => a.rank - b.rank);
+    hit = candidates[0] ?? null;
+    if (hit) {
+      scene.facing = hit.dir;
+      scene.look(hit.dir);
+    }
+  }
+  if (!hit) return;
+  const { npc, prop } = hit;
   state.busy = true;
   if (npc) {
     await talkTo(npc);
@@ -932,12 +1014,15 @@ async function gate() {
 }
 
 async function endChapter() {
+  // Chỉ khi rời làng mới biết người chơi có chừa bờ tây suốt chuyến đi hay không.
+  const sides = state.rite.sides;
+  if (sides.has('n') && sides.has('e') && sides.has('s') && !sides.has('w')) rite('pond');
   for (const d of Object.values(DEBATES)) {
     if (!debateState(d.id).resolved) pushLog(d.echoLeft);
   }
   await scribeInterlude();
   await screen('<p class="big">Ba thế hệ sau…</p>');
-  await screen(echoLogHtml(state.log, 'Log Vũ Trụ — ba thế hệ sau', VERDICTS), 'Vào thị trấn');
+  await screen(echoLogHtml(state.log, 'Log Vũ Trụ — ba thế hệ sau', certaintyVerdict(state.log, VERDICTS)), 'Vào thị trấn');
   await enterChapter2();
 }
 
@@ -958,7 +1043,7 @@ async function endChapter2() {
   }
   if (!debateState('boss').resolved) pushLog('boss.left');
   await screen('<p class="big">Ba thế hệ sau nữa…</p>');
-  await screen(echoLogHtml(state.log2, 'Log Vũ Trụ — sáu thế hệ sau', VERDICTS2), 'Vào thị trấn');
+  await screen(echoLogHtml(state.log2, 'Log Vũ Trụ — sáu thế hệ sau', certaintyVerdict(state.log2, VERDICTS2)), 'Vào thị trấn');
   await enterChapter3();
 }
 
@@ -1177,7 +1262,7 @@ class Town extends Phaser.Scene {
     $('game').classList.toggle('flip', state.flipped);
     this.player.setFlipY(state.flipped);
     held.clear();
-    if (!state.crossed) { state.crossed = true; finale(); }
+    if (state.chapter === 3 && !state.crossed) { state.crossed = true; finale(); }
   }
 
   // Kết "hỏi": Máy bước một ô về phía mối dán, rồi log thôi không ghi được nữa
@@ -1203,6 +1288,7 @@ class Town extends Phaser.Scene {
       this.site.setTexture('s_workshop');
       this.dusk.setFillStyle(0xfff2c0, 0.1).setVisible(true);
       this.placeSigns(state.legacy.rites);
+      this.edgeTiles(state.legacy.glued ? 'G' : 'P');
     } else if (n === 2) {
       this.placeSigns(state.log.filter((id) => id.startsWith('rite.')).map((id) => id.slice(5)));
       const id = firstEcho('thunder');
@@ -1226,8 +1312,15 @@ class Town extends Phaser.Scene {
   // Chương 1: bạn đi đâu cũng có người để ý
   noteStep(x, y, ch) {
     if (ch === 'f' && ++state.rite.field >= 5) rite('field');
-    const side = y === 9 && x >= 14 && x <= 16 ? 'n' : y === 12 && x >= 14 && x <= 16 ? 's' : x === 17 && (y === 10 || y === 11) ? 'e' : null;
-    if (side && state.rite.sides.add(side).size === 3) rite('pond');
+    const sides = state.rite.sides;
+    if (x >= 14 && x <= 16) {
+      if (y === 9) sides.add('n');
+      if (y === 12) sides.add('s');
+    }
+    if (y === 10 || y === 11) {
+      if (x === 13) sides.add('w');
+      if (x === 17) sides.add('e');
+    }
   }
 
   clearBubble(npc) { npc.bubble?.destroy(); npc.bubble = null; }
@@ -1251,8 +1344,15 @@ class Town extends Phaser.Scene {
     this.look(d);
     const nx = this.px + d[0];
     const ny = this.py + d[1];
-    if (state.glued && (nx < 0 || nx >= COLS)) { this.cross(nx < 0 ? COLS - 1 : 0); return; }
+    if ((nx < 0 || nx >= COLS) && this.grid[this.py][this.px] === 'G') {
+      this.cross(nx < 0 ? COLS - 1 : 0);
+      return;
+    }
     const ch = this.grid[ny]?.[nx];
+    if (state.chapter === 4 && (ch === 'P' || (ch === 'G' && !state.log4.includes('r2.mep.visit')))) {
+      visitRound2Edge(nx);
+      return;
+    }
     if (ch === 'P') { held.clear(); edgeBump(); return; }
     if (this.propAt(nx, ny)) return;
     const blocker = this.npcAt(nx, ny);
@@ -1309,23 +1409,17 @@ async function intro() {
     await enterChapter2();
     return;
   }
-  await screen(
+  const L = loadLegacy();
+  const pick = await screen(
     `<h1>VI HÀNH</h1>
      <div class="sub">Sấm · Bìa Vàng · Công Cụ</div>
      <p>Đám Đấng Sáng Tạo nhờ bạn xuống xem sản phẩm của chúng. Quy tắc cứng: bạn không được sửa thế giới, chỉ được nói chuyện.</p>
      <p>Thị trấn này đang sợ sấm, và sắp tế một con dê.</p>
-     <p>Bạn có thể <b>hỏi</b> hoặc <b>khẳng định</b>. Cả hai đều được ghi lại.</p>`,
-    'Xuống',
+     <p>Bạn có thể <b>hỏi</b> hoặc <b>khẳng định</b>. Cả hai đều được ghi lại.</p>`
+    + (L ? '<p class="legacy-note">Thị trấn bạn để lại lần trước vẫn còn đó. Bạn có thể xuống làm Thầy từ đầu, hoặc sinh ra làm một đứa trẻ lớn lên giữa những lời mình đã nói.</p>' : ''),
+    L ? ['Xuống làm Thầy', 'Vòng hai: sinh ra ở thị trấn ấy'] : 'Xuống',
   );
-  const L = loadLegacy();
-  if (L) {
-    const i = await choose('', 'Thị trấn bạn để lại lần trước vẫn còn đó.', [
-      { label: 'Xuống làm Thầy, từ đầu' },
-      { label: 'Vòng hai: sinh ra ở thị trấn ấy', hint: 'bạn là một đứa trẻ, lớn lên giữa những lời mình đã nói' },
-    ]);
-    closeDialog();
-    if (i === 1) { await enterRound2(L); return; }
-  }
+  if (L && pick === 1) { await enterRound2(L); return; }
   state.busy = false;
 }
 

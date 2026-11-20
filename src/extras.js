@@ -66,8 +66,8 @@ export const SCRIBE = {
     'thunder.a2': { keep: ['không', 'cần'] },
     'thunder.a3': { keep: ['quen', 'kẻ'], drop: ['tin'] },
     'pond.a1': { keep: ['nước', 'chung'] },
-    'pond.a2': { keep: ['ai', 'uống'] },
-    'ti.sleep': { keep: ['nhóc'] },
+    'pond.a2': { keep: ['khát', 'uống'] },
+    'ti.sleep': { keep: ['ngủ', 'nhóc'] },
     'ti.fear': { keep: ['không', 'sao'] },
     'lanh.pass': { keep: ['chỉ'] },
     'lanh.master': { keep: ['của', 'đứa'] },
@@ -150,17 +150,17 @@ export function round2(L) {
       doctrine: L.glued ? 'Thế giới chỉ có một mặt, là mặt này' : 'Ngoài mép giấy không có gì',
       intro: L.glued
         ? ['Mép làng dán kín rồi. Đi mãi thì về chỗ cũ, đầu lộn xuống đất. Thầy tự tay dán đấy.', 'Nên cấm đi thử. Thầy dán là để mình khỏi phải đi.']
-        : ['Tới mép làng là hết. Thầy đã ra tới đó, nhìn một lúc, rồi quay về.', 'Thầy còn quay về thì mình ra đấy làm gì. Cấm tới gần.'],
+        : ['Tới mép làng là hết. Từ đời Thầy tới giờ đất làng vẫn vẽ tới đó thôi.', 'Con xem, qua nét mực này là hết bản đồ. Cấm tới gần.'],
       questions: [
         L.end === 'end.ask'
           ? { label: 'Đã có ai đi thử chưa ạ?', dmg: 3, reply: 'Có cái Máy. Người ta kể nó bước một bước, rồi sổ sách thôi không ghi gì về nó nữa.' }
           : { label: 'Đã có ai đi thử chưa ạ?', dmg: 3, reply: 'Chưa. Cấm mà. … Mà cấm từ bao giờ, ai cấm, ta cũng không rõ.' },
-        { label: 'Chưa ai đi thì sao chú biết bên ấy thế nào ạ?', dmg: 3, reply: 'Kinh chép. Mà kinh thì… do người chưa đi chép.' },
+        { label: 'Chú biết bên ấy thế nào là nhờ đâu ạ?', dmg: 3, reply: 'Kinh chép. Mà người cầm bút hôm ấy có đi không, chú chưa từng hỏi.' },
         { label: 'Cái Máy trong xưởng nói gì về chỗ ấy ạ?', dmg: 1, reply: 'Nó nói dài lắm. Chưa ai nghe hết một câu, nên mỗi người trích một nửa.' },
         { label: 'Chú sợ nên mới cấm, phải không ạ?', dmg: -1, reply: 'Trẻ con biết gì mà sợ với không. Ra đứng úp mặt vào tường.' },
       ],
       recite: 'Đúng lời Thầy. Thầy đã nói thế thì còn ra mép làm gì nữa. Đứa bé này sáng dạ.',
-      winQ: ['Người cấm chưa đi. Người chép chưa đi. Ta canh ở đây cả đời cũng chưa đi.', 'Ta không cấm con nữa. Nhưng lúc nào đi thì gọi ta, ta cũng muốn xem.'],
+      winQ: ['Ta canh ở đây cả đời, đôi dép này vẫn chưa ra đến mép.', 'Ta không cấm con nữa. Con cứ ra mép đông hay mép tây rồi gọi, ta cũng muốn xem.'],
       winA: ['Con thuộc kinh thế thì ra đây canh mép với ta. Hai người canh thì chắc hơn một.'],
       leave: 'Đi chơi thì chơi trong làng thôi đấy.',
       afterQ: 'Ta đang buộc lại quai dép. Phòng khi con gọi.',
@@ -169,6 +169,13 @@ export function round2(L) {
   };
 
   const said = { 'ti.sleep': 'Ngủ sớm đi, nhóc.', 'ti.fear': 'Sợ thì cứ sợ, không sao cả.', 'ti.ask': 'Thế con nghĩ sấm là gì?' }[L.ti] ?? null;
+  const edge = L.glued ? {
+    first: 'Có đường chỉ kìa. Con cứ bước qua đi. Ta đứng đây xem con ló ra ở đâu.',
+    after: 'Nhìn từ đây, mối dán thẳng tắp. Vậy mà quai dép của ta trông cứ ngược ngược.',
+  } : {
+    first: 'Hai đầu còn rời thật. Con giữ mép này với ta một lát nhé, gió to quá.',
+    after: 'Lúc con gọi, ta cứ tưởng tay sẽ chạm tường. Hóa ra chỉ là một mép giấy mỏng tang.',
+  };
   const stranger = {
     arrive: [
       'Ở cổng làng có một người lạ đang đi vào. Ông ấy nhìn quanh như người đi xem hội.',
@@ -199,9 +206,13 @@ export function round2(L) {
   };
 
   Object.assign(ECHO, {
+    'r2.mep.visit': {
+      verb: 'Bạn gọi chú ra xem', said: 'Hai chú cháu ra tận mép làng.', cc: 0,
+      now: L.glued ? 'Chú chỉ cho lũ trẻ xem đường chỉ nối hai mép giấy.' : 'Chú đem hai hòn sỏi ra chặn mép giấy những ngày nhiều gió.',
+    },
     'r2.end.copy': {
       verb: 'Bạn chép lại', said: said ?? 'Thầy đi ngang mà không nói gì.', cc: 4,
-      now: 'Bạn là người chép đầu tiên của bộ kinh mới. Bạn biết rõ nó bị chép thiếu thế nào, vì chính bạn chép.',
+      now: said ? 'Bạn là người chép đầu tiên của bộ kinh mới. Bạn biết rõ nó bị chép thiếu thế nào, vì chính bạn chép.' : 'Người ta xin bạn kể lại buổi gặp ở cổng. Chuyện một người đi qua không nói gì dài thêm sau mỗi lần kể.',
     },
     'r2.end.ask': {
       verb: 'Bạn hỏi lại', said: stranger.options[1].label, cc: 0,
@@ -209,11 +220,11 @@ export function round2(L) {
     },
     'r2.end.ignore': {
       verb: 'Bạn bỏ đi', said: 'Kệ ông ấy. Đi chơi.', cc: 1,
-      now: 'Bạn lớn lên không theo kinh nào. Làng gọi thế là Đạo Kệ. Đạo Kệ hiện có ba điều răn.',
+      now: 'Làng gọi buổi bạn bỏ ra ao chơi là ngày lập Đạo Kệ. Đạo Kệ hiện có ba điều răn.',
     },
   });
 
-  return { npcs, debates, recites, stranger };
+  return { npcs, debates, recites, stranger, edge };
 }
 
 export const ROUND2_TEXT = {
@@ -223,14 +234,19 @@ export const ROUND2_TEXT = {
   ],
   note: 'Bạn là trẻ con. Không ai chép lời bạn. Người lớn chỉ chịu nghe hỏi vài câu.',
   epilogues: {
-    'r2.end.copy': 'Lượt trước bạn nói, người khác chép. Lượt này bạn tự chép. Bộ kinh chỉ đổi người cầm dao.',
+    'r2.end.copy': 'Bữa cơm tối ấy, mấy đứa nhỏ xúm quanh bạn, đòi nghe chuyện người lạ ở cổng làng.',
     'r2.end.ask': 'Bạn làm ông ấy ngạc nhiên. Bạn vẫn sống trong thị trấn mọc lên từ lời ông ấy. Cả hai điều cùng đúng.',
-    'r2.end.ignore': 'Bạn không theo kinh nào, và việc ấy cũng được chép lại. Muốn ra khỏi một bộ kinh, quay lưng với nó là chưa đủ.',
+    'r2.end.ignore': 'Bạn ngồi thả chân xuống ao. Tận bên cổng, người ta vẫn tranh nhau kể lúc nãy bạn quay đi thế nào.',
   },
 };
 
-export const VERDICTS4 = [
-  { max: 1, text: 'Mấy người lớn thôi chắc chắn, vì một đứa trẻ hỏi. Không ai ghi tên đứa trẻ ấy.' },
-  { max: 8, text: 'Vài điều đổ, vài điều bạn học thuộc. Bạn lớn lên thành một người làng bình thường.' },
-  { max: 999, text: 'Bạn thuộc kinh hơn cả người giữ kinh. Hai mươi năm nữa, cái bàn Giải Thích là của bạn.' },
-];
+export function round2Verdict(log) {
+  const changed = log.filter((id) => id.endsWith('.fall')).length;
+  const recited = log.some((id) => /\.rec\d+$/.test(id));
+  if (!changed && !recited) return 'Ba lệ cũ vẫn còn nguyên. Dòng cuối trong sổ kể chuyện bạn gặp người lạ ở cổng.';
+  const lines = [];
+  if (changed === 1) lines.push('Có một người lớn đổi ý sau khi nghe bạn hỏi.');
+  if (changed > 1) lines.push(`Có ${changed === 2 ? 'hai' : 'ba'} người lớn đổi ý sau khi nghe bạn hỏi.`);
+  if (recited) lines.push('Sổ làng chép cả lời kinh bạn đã đọc. Bên lề có người phê một chữ “ngoan”.');
+  return lines.join(' ');
+}

@@ -11,7 +11,14 @@ export const CH2 = {
     questions: [
       { label: 'Cụ cố anh hồi ấy mấy tuổi?', dmg: 3, reply: 'Bảy tuổi... Ý ông là sứ mệnh được giao cho một đứa bé bảy tuổi đang sợ sấm à?' },
       { label: 'Người thu tiền phạt thì thức tới giờ nào?', dmg: 2, reply: 'Tôi phải thức để bắt người thức. Việc công mà... Ờ.' },
-      { label: 'Ngủ sớm để làm gì, kinh có ghi không?', dmg: 2, reply: 'Kinh chỉ ghi "Ngủ sớm đi". Có chữ "nhóc" nữa, mà các cụ bảo chữ ấy là ẩn dụ.' },
+      {
+        label: 'Ngủ sớm để làm gì, kinh có ghi không?', dmg: 2,
+        readTablet: (text) => `Trên thẻ chỉ có “${text}”. ` + (
+          text.toLowerCase().split(' ').includes('nhóc')
+            ? 'Ông hỏi chữ “nhóc” ấy à? Các cụ bảo là ẩn dụ. Tôi vẫn thấy giống tiếng gọi trẻ con.'
+            : 'Chỗ nào ghi tiền phạt ấy nhỉ? À, tiền phạt ở sổ khác.'
+        ),
+      },
       { label: 'Anh cũng thấy phạt người thức khuya là vô lý chứ?', dmg: -1, reply: 'Vô lý là cãi lời Thầy. Sáu xu. Hỏi kiểu gài người ta như thế là chín xu.' },
     ],
     own: 'Ông là Thầy? Vậy mời Thầy xác nhận: giờ Tý tính theo gà gáy hay theo trống canh? Làng cãi nhau chuyện ấy hai đời rồi.',
@@ -28,12 +35,15 @@ export const CH2 = {
     questions: [
       { label: 'Hôm nào trời không sấm thì các anh sợ cái gì?', dmg: 3, reply: 'Thì... sợ dự phòng. Thú thật hôm ấy cả làng ngồi nhìn nhau.' },
       { label: 'Người dạy lớp sợ có sợ không?', dmg: 2, reply: 'Thầy giáo phải bình tĩnh mới dạy được chứ. Ơ. Vậy là ổng...' },
-      { label: 'Chữ "không sao cả" nằm ở đâu trong kinh?', dmg: 2, reply: 'Có câu ấy. Nhưng các cụ chú giải là "không sao cả, miễn là sợ đủ".' },
+      {
+        label: 'Trên thẻ khắc gì mà anh phải mở lớp dạy sợ?', dmg: 2,
+        readTablet: (text) => `Đây, ông tự đọc đi. “${text}”. Còn cái lớp… làng mình mở về sau.`,
+      },
       { label: 'Chính anh cũng đâu có sợ thật, phải không?', dmg: -1, reply: 'Tôi sợ rất thật! Tôi có chứng chỉ! Đã không sợ lại còn nghi người sợ. Ghi tên.' },
     ],
     own: 'Thầy hiện về! Mọi người ơi, sợ đi! Sợ ngay! Thầy đang nhìn đấy!',
-    retract: 'Thầy rút lại "cứ sợ"... tức là cấm sợ? Con sợ quá. Chết, con xin lỗi.',
-    winQ: ['"Sợ thì cứ sợ, không sao cả." Hoá ra là câu dỗ trẻ con.', 'Tôi giải tán lớp. Ai sợ thì sợ, ai không thì thôi.'],
+    retract: 'Thầy đổi ý… tức là giờ cấm sợ? Con sợ quá. Chết, con xin lỗi.',
+    winQ: ['Hồi ấy cụ tôi mới bảy tuổi. Hay ông khách chỉ muốn dỗ cụ nín?', 'Tôi giải tán lớp. Ai sợ thì sợ, ai không thì thôi.'],
     winA: ['Con sẽ dạy lại đúng như Thầy vừa nói. Lớp tối nay đổi giáo trình.'],
     leave: 'Ông đi mà không run. Tôi ghi tên ông rồi đấy.',
     afterQ: 'Sấm thì tôi vẫn giật mình. Nhưng giờ không phải nộp bài nữa.',
