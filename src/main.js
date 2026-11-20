@@ -107,6 +107,7 @@ function choose(who, text, options) {
     $('d-more').hidden = true;
     const box = $('d-choices');
     box.innerHTML = '';
+    box.classList.toggle('compact', options.length >= 6);
     let sel = 0;
     const buttons = options.map((o, i) => {
       const b = document.createElement('button');
@@ -135,18 +136,61 @@ function choose(who, text, options) {
   });
 }
 
-function closeDialog() { dialog.hidden = true; }
+function closeDialog() {
+  dialog.hidden = true;
+  document.activeElement?.blur?.();
+}
 
 function screen(html, btn = 'Tiếp tục') {
   return new Promise((resolve) => {
     held.clear();
     const el = $('screen');
-    el.innerHTML = `${html}<button id="scr-btn">${esc(btn)} ⏎</button>`;
+    const list = Array.isArray(btn) ? btn : [btn];
+    const btnsHtml = list.length === 1
+      ? `<button id="scr-btn">${esc(list[0])} ⏎</button>`
+      : `<div class="scr-btns">${list.map((b, i) => `<button data-i="${i}" id="${i === 0 ? 'scr-btn' : `scr-btn-${i}`}">${esc(b)}${i === 0 ? ' ⏎' : ''}</button>`).join('')}</div>`;
+    el.innerHTML = `${html}${btnsHtml}`;
     el.hidden = false;
     el.scrollTop = 0;
-    const done = () => { keyHandler = null; el.hidden = true; resolve(); };
-    keyHandler = (e) => { if (!e.repeat && (e.code === 'Enter' || e.code === 'Space')) done(); };
-    $('scr-btn').onclick = done;
+    const buttons = [...el.querySelectorAll('.scr-btns button, #scr-btn')];
+    let sel = 0;
+    const paint = () => {
+      if (list.length <= 1) return;
+      buttons.forEach((b, i) => {
+        b.classList.toggle('sel', i === sel);
+        b.textContent = `${list[i]}${i === sel ? ' ⏎' : ''}`;
+      });
+    };
+    const done = (i = sel) => { keyHandler = null; el.hidden = true; document.activeElement?.blur?.(); resolve(i); };
+    paint();
+    buttons.forEach((b, i) => {
+      b.onclick = () => done(i);
+      b.onfocus = () => { sel = i; paint(); };
+      b.onmouseenter = () => {
+        if (buttons.includes(document.activeElement)) return;
+        sel = i;
+        paint();
+      };
+    });
+    keyHandler = (e) => {
+      const logEl = el.querySelector('.log');
+      if (list.length > 1 && (e.code === 'ArrowRight' || e.code === 'KeyD' || e.code === 'ArrowLeft' || e.code === 'KeyA' || e.code === 'ArrowDown' || e.code === 'KeyS' || e.code === 'ArrowUp' || e.code === 'KeyW')) {
+        const step = (e.code === 'ArrowRight' || e.code === 'KeyD' || e.code === 'ArrowDown' || e.code === 'KeyS') ? 1 : list.length - 1;
+        sel = (sel + step) % list.length;
+        if (buttons.includes(document.activeElement)) buttons[sel].focus();
+        else paint();
+      } else if (logEl && (e.code === 'ArrowDown' || e.code === 'KeyS')) {
+        logEl.scrollTop += 48;
+      } else if (logEl && (e.code === 'ArrowUp' || e.code === 'KeyW')) {
+        logEl.scrollTop -= 48;
+      } else if (!e.repeat && (e.code === 'Enter' || e.code === 'Space')) {
+        e.preventDefault();
+        done(sel);
+      } else if (list.length > 1 && /^(Digit|Numpad)[1-9]$/.test(e.code)) {
+        const i = Number(e.code.slice(-1)) - 1;
+        if (i < list.length) done(i);
+      }
+    };
   });
 }
 
@@ -912,12 +956,28 @@ async function talkTo(npc) {
 }
 
 async function interact() {
-  const fx = scene.px + scene.facing[0];
-  const fy = scene.py + scene.facing[1];
-  const npc = scene.npcAt(fx, fy);
-  const prop = scene.propAt(fx, fy);
-  const door = state.chapter === 1 && scene.grid[fy]?.[fx] === 'D';
-  if (!npc && !prop && !door) return;
+  const probe = (dx, dy) => {
+    const x = scene.px + dx;
+    const y = scene.py + dy;
+    const npc = scene.npcAt(x, y);
+    const prop = scene.propAt(x, y);
+    const door = state.chapter === 1 && scene.grid[y]?.[x] === 'D';
+    if (!npc && !prop && !door) return null;
+    const rank = npc ? (npc.goat || (npc.machine && state.hasMachine) ? 2 : 1) : prop ? 3 : 4;
+    return { dir: [dx, dy], npc, prop, door, rank };
+  };
+  let hit = probe(scene.facing[0], scene.facing[1]);
+  if (!hit) {
+    const dirs = [[0, -1], [0, 1], [-1, 0], [1, 0]];
+    const candidates = dirs.map(([dx, dy]) => probe(dx, dy)).filter(Boolean).sort((a, b) => a.rank - b.rank);
+    hit = candidates[0] ?? null;
+    if (hit) {
+      scene.facing = hit.dir;
+      scene.look(hit.dir);
+    }
+  }
+  if (!hit) return;
+  const { npc, prop } = hit;
   state.busy = true;
   if (npc) {
     await talkTo(npc);
@@ -1356,23 +1416,17 @@ async function intro() {
     await enterChapter2();
     return;
   }
-  await screen(
+  const L = loadLegacy();
+  const pick = await screen(
     `<h1>VI HÀNH</h1>
      <div class="sub">Sấm · Bìa Vàng · Công Cụ</div>
      <p>Đám Đấng Sáng Tạo nhờ bạn xuống xem sản phẩm của chúng. Quy tắc cứng: bạn không được sửa thế giới, chỉ được nói chuyện.</p>
      <p>Thị trấn này đang sợ sấm, và sắp tế một con dê.</p>
-     <p>Bạn có thể <b>hỏi</b> hoặc <b>khẳng định</b>. Cả hai đều được ghi lại.</p>`,
-    'Xuống',
+     <p>Bạn có thể <b>hỏi</b> hoặc <b>khẳng định</b>. Cả hai đều được ghi lại.</p>`
+    + (L ? '<p class="legacy-note">Thị trấn bạn để lại lần trước vẫn còn đó. Bạn có thể xuống làm Thầy từ đầu, hoặc sinh ra làm một đứa trẻ lớn lên giữa những lời mình đã nói.</p>' : ''),
+    L ? ['Xuống làm Thầy', 'Vòng hai: sinh ra ở thị trấn ấy'] : 'Xuống',
   );
-  const L = loadLegacy();
-  if (L) {
-    const i = await choose('', 'Thị trấn bạn để lại lần trước vẫn còn đó.', [
-      { label: 'Xuống làm Thầy, từ đầu' },
-      { label: 'Vòng hai: sinh ra ở thị trấn ấy', hint: 'bạn là một đứa trẻ, lớn lên giữa những lời mình đã nói' },
-    ]);
-    closeDialog();
-    if (i === 1) { await enterRound2(L); return; }
-  }
+  if (L && pick === 1) { await enterRound2(L); return; }
   state.busy = false;
 }
 
