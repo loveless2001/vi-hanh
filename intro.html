@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Vi Hành — intro</title>
+  <style>
+    :root { --ink: #1d1a16; --paper: #f3ead3; --gold: #d9b84a; --red: #a8402f; }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; height: 100%; background: #14120f; overflow: hidden;
+      font-family: Cambria, 'Times New Roman', 'Noto Serif', serif;
+    }
+    body { display: grid; place-items: center; }
+    #wrap {
+      position: relative; width: min(100vw, 133.33vh); aspect-ratio: 4 / 3;
+      container-type: size; background: #000; overflow: hidden;
+    }
+    #c { width: 100%; height: 100%; display: block; }
+    #vig {
+      position: absolute; inset: 0; pointer-events: none;
+      background: radial-gradient(ellipse at center, transparent 55%, rgba(0, 0, 0, .55) 100%);
+    }
+    #dlg {
+      position: absolute; left: 6cqw; right: 6cqw; bottom: 4cqw; min-height: 11cqw;
+      padding: 1.8cqw 2.6cqw; background: var(--paper); color: var(--ink);
+      border: .35cqw solid var(--gold); outline: .2cqw solid #5a4a2a;
+      font-size: 2.7cqw; line-height: 1.35; box-shadow: 0 .6cqw 2cqw rgba(0, 0, 0, .5);
+    }
+    #dlg[hidden] { display: none; }
+    #bubble {
+      position: absolute; padding: 1cqw 1.4cqw; background: #fff; color: var(--ink);
+      border: .25cqw solid var(--ink); border-radius: 2cqw 2cqw 2cqw .3cqw;
+      font-family: system-ui, sans-serif; font-size: 1.9cqw; line-height: 1.35;
+      max-height: 60cqw; overflow: hidden; box-shadow: 0 .4cqw 1.4cqw rgba(0, 0, 0, .4);
+    }
+    #bubble[hidden] { display: none; }
+    #dlg.top { bottom: auto; top: 4cqw; }
+    #dlg-who { font-weight: bold; color: var(--red); font-size: 2.1cqw; margin-bottom: .4cqw; }
+    #dlg-who:empty { display: none; }
+    #dlg.narr #dlg-text { font-style: italic; }
+    #flash, #fade { position: absolute; inset: 0; pointer-events: none; opacity: 0; }
+    #flash { background: #fff; }
+    #fade {
+      background: #000; display: grid; place-items: center;
+      color: var(--paper); font-size: 4cqw; font-style: italic;
+    }
+    #title {
+      position: absolute; inset: 0; display: grid; place-content: center; text-align: center;
+      background: rgba(12, 10, 8, .62); color: var(--paper); opacity: 0; pointer-events: none;
+    }
+    #title h1 { margin: 0; font-size: 10cqw; letter-spacing: 1cqw; color: var(--gold); }
+    #title p { font-size: 2.6cqw; font-style: italic; margin: 1.5cqw 0 4cqw; }
+    #title button, #start button {
+      justify-self: center; font: inherit; font-size: 2.8cqw; padding: 1cqw 3.2cqw; cursor: pointer;
+      background: var(--gold); color: var(--ink); border: .25cqw solid #5a4a2a;
+    }
+    #start {
+      position: absolute; inset: 0; display: grid; place-content: center; gap: 2cqw; text-align: center;
+      background: #14120f; color: var(--paper); font-size: 2.4cqw;
+    }
+    #start[hidden] { display: none; }
+    #skip {
+      position: absolute; right: 1.6cqw; top: 1.2cqw; color: var(--paper); opacity: .55;
+      font-family: system-ui, sans-serif; font-size: 1.6cqw;
+    }
+  </style>
+</head>
+<body>
+  <div id="wrap">
+    <canvas id="c"></canvas>
+    <div id="vig"></div>
+    <div id="bubble" hidden></div>
+    <div id="dlg" hidden><div id="dlg-who"></div><div id="dlg-text"></div></div>
+    <div id="flash"></div>
+    <div id="fade"><span id="fade-text"></span></div>
+    <div id="title">
+      <h1>VI HÀNH</h1>
+      <p>Bạn có thể hỏi hoặc khẳng định. Cả hai đều được ghi lại.</p>
+      <button id="go">Xuống ⏎</button>
+    </div>
+    <div id="skip">Esc bỏ qua</div>
+    <div id="start"><div>Trước khi tôi vi hành</div><button id="play">Xem ⏎</button></div>
+  </div>
+  <script type="module" src="src/intro.js"></script>
+</body>
+</html>
